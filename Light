@@ -1,0 +1,321 @@
+--[[
+    LIGHT FARM BOT
+    Based on the remotes/modules found in the uploaded FerHub script.
+
+    IMPORTANT:
+    1) Rotate the Discord webhook URLs you previously posted publicly.
+    2) Put the NEW URLs below.
+    3) Set SCRIPT_URL to the raw URL where this file is hosted.
+       queue_on_teleport/loadstring is executor-dependent.
+]]
+
+local CONFIG = {
+    -- Replace with your ROTATED webhook #1 (stats)
+    STATS_WEBHOOK = "PUT_STATS_WEBHOOK_HERE",
+
+    -- Replace with your ROTATED webhook #2 (new Session Cube)
+    CUBE_WEBHOOK = "PUT_CUBE_WEBHOOK_HERE",
+
+    -- Raw GitHub/Gist URL for THIS script. Needed for auto-reinject.
+    SCRIPT_URL = "PUT_RAW_SCRIPT_URL_HERE",
+
+    PACK_DELAY = 0.10,
+    DICE_BUY_DELAY = 1,
+    SEED_BUY_DELAY = 1,
+    ITEM_BUY_DELAY = 1,
+    STATS_INTERVAL = 300,
+    ANTI_AFK_INTERVAL = 600,
+}
+
+if not game:IsLoaded() then game.Loaded:Wait() end
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService = game:GetService("HttpService")
+local TeleportService = game:GetService("TeleportService")
+
+local Player = Players.LocalPlayer
+local Remotes = ReplicatedStorage:WaitForChild("Remotes", 15)
+
+if not Remotes then
+    warn("[LightFarm] Remotes folder not found.")
+    return
+end
+
+local function request(url, payload)
+    if not url or url == "" or url:find("PUT_") then return end
+
+    local req = http_request or request or syn and syn.request or http and http.request
+    if not req then
+        warn("[LightFarm] HTTP request function unavailable.")
+        return
+    end
+
+    task.spawn(function()
+        pcall(function()
+            req({
+                Url = url,
+                Method = "POST",
+                Headers = {["Content-Type"] = "application/json"},
+                Body = HttpService:JSONEncode(payload)
+            })
+        end)
+    end)
+end
+
+local function webhook(url, title, description)
+    request(url, {
+        username = "Light Farm",
+        embeds = {{
+            title = title,
+            description = description,
+            color = 5793266,
+            timestamp = DateTime.now():ToIsoDate()
+        }}
+    })
+end
+
+-- =========================================================
+-- AUTO REINJECT AFTER REJOIN / SERVER TELEPORT
+-- =========================================================
+
+local queueTeleport = queue_on_teleport or queueonteleport or (syn and syn.queue_on_teleport)
+
+if queueTeleport and CONFIG.SCRIPT_URL ~= "" and not CONFIG.SCRIPT_URL:find("PUT_") then
+    pcall(function()
+        queueTeleport(
+            "task.wait(3); " ..
+            "pcall(function() loadstring(game:HttpGet(" ..
+            string.format("%q", CONFIG.SCRIPT_URL) ..
+            "))() end)"
+        )
+    end)
+end
+
+-- =========================================================
+-- HELPERS
+-- =========================================================
+
+local function fire(remoteName, ...)
+    local r = Remotes:FindFirstChild(remoteName)
+    if not r then return false end
+
+    return pcall(function()
+        if r:IsA("RemoteFunction") then
+            r:InvokeServer(...)
+        else
+            r:FireServer(...)
+        end
+    end)
+end
+
+local function getValue(parent, name)
+    local obj = parent and parent:FindFirstChild(name)
+    if not obj then return 0 end
+    return tonumber(obj.Value) or 0
+end
+
+local function getItemsFolder()
+    return Player:FindFirstChild("Items")
+end
+
+-- =========================================================
+-- 1. SPAM PACKS
+-- =========================================================
+
+task.spawn(function()
+    while true do
+        fire("Roll")
+        task.wait(CONFIG.PACK_DELAY)
+    end
+end)
+
+-- =========================================================
+-- 2. BUY ALL DICE
+-- =========================================================
+
+task.spawn(function()
+    local options = {"Option1", "Option2", "Option3", "Option4"}
+
+    while true do
+        for _, option in ipairs(options) do
+            fire("PurchaseDice", option)
+            task.wait(CONFIG.DICE_BUY_DELAY)
+        end
+    end
+end)
+
+-- =========================================================
+-- 3. BUY ALL SEEDS
+-- =========================================================
+
+task.spawn(function()
+    local options = {
+        "Option1", "Option2", "Option3",
+        "Option4", "Option5", "Option6"
+    }
+
+    while true do
+        for _, option in ipairs(options) do
+            fire("PurchaseSeed", option)
+            task.wait(CONFIG.SEED_BUY_DELAY)
+        end
+    end
+end)
+
+-- =========================================================
+-- 4. BUY ALL ITEMS + ALL TOOLS
+-- =========================================================
+
+task.spawn(function()
+    while true do
+        fire("BuyAllItems")
+
+        for i = 1, 4 do
+            fire("PurchaseTool", "Option" .. i)
+        end
+
+        task.wait(CONFIG.ITEM_BUY_DELAY)
+    end
+end)
+
+-- =========================================================
+-- 5. POTION / DICE WEBHOOK STATS EVERY 5 MINUTES
+-- =========================================================
+
+local function getDiceCounts()
+    local items = getItemsFolder()
+    local result = {}
+
+    if not items then return result end
+
+    local diceNames = {
+        "Dice",
+        "Ice Dice",
+        "Fire Dice",
+        "Insane Dice"
+    }
+
+    for _, name in ipairs(diceNames) do
+        result[name] = getValue(items, name)
+    end
+
+    return result
+end
+
+local function getPotionCounts()
+    local items = getItemsFolder()
+    local result = {}
+
+    if not items then return result end
+
+    local ok, ItemsData = pcall(function()
+        return require(ReplicatedStorage.Modules.Items)
+    end)
+
+    if not ok or type(ItemsData) ~= "table" then
+        return result
+    end
+
+    for itemName, itemInfo in pairs(ItemsData) do
+        if type(itemInfo) == "table" and itemInfo.Boost then
+            result[itemName] = getValue(items, itemName)
+        end
+    end
+
+    return result
+end
+
+local function formatCounts(title, counts)
+    local lines = {}
+
+    for name, amount in pairs(counts) do
+        table.insert(lines, ("**%s:** %s"):format(name, tostring(amount)))
+    end
+
+    table.sort(lines)
+
+    if #lines == 0 then
+        return title .. "\nNone found."
+    end
+
+    return title .. "\n" .. table.concat(lines, "\n")
+end
+
+task.spawn(function()
+    task.wait(5)
+
+    while true do
+        local dice = getDiceCounts()
+        local potions = getPotionCounts()
+
+        local description =
+            formatCounts("🎲 Dice", dice) ..
+            "\n\n" ..
+            formatCounts("🧪 Potions / Boosts", potions)
+
+        webhook(CONFIG.STATS_WEBHOOK, "📊 Farm Bot Stats", description)
+
+        task.wait(CONFIG.STATS_INTERVAL)
+    end
+end)
+
+-- =========================================================
+-- 6. NEW SESSION CUBE WEBHOOK
+-- =========================================================
+
+task.spawn(function()
+    local index = Player:WaitForChild("Index", 15)
+    local cubes = index and index:WaitForChild("SessionCubes", 15)
+
+    if not cubes then
+        warn("[LightFarm] SessionCubes folder not found.")
+        return
+    end
+
+    -- Existing cubes are not reported.
+    local known = {}
+
+    for _, cube in ipairs(cubes:GetChildren()) do
+        known[cube.Name] = true
+    end
+
+    cubes.ChildAdded:Connect(function(cube)
+        if known[cube.Name] then return end
+        known[cube.Name] = true
+
+        webhook(
+            CONFIG.CUBE_WEBHOOK,
+            "🎲 New Session Cube",
+            ("**%s** was added to your SessionCubes collection."):format(cube.Name)
+        )
+    end)
+end)
+
+-- =========================================================
+-- 7. ANTI-AFK
+-- =========================================================
+
+task.spawn(function()
+    while true do
+        task.wait(CONFIG.ANTI_AFK_INTERVAL)
+
+        pcall(function()
+            local character = Player.Character
+            local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+
+            if humanoid then
+                humanoid.Jump = true
+            end
+        end)
+    end
+end)
+
+print("[LightFarm] Running.")
+print("[LightFarm] Pack spam: ON")
+print("[LightFarm] Buy dice: ON")
+print("[LightFarm] Buy seeds: ON")
+print("[LightFarm] Buy all items/tools: ON")
+print("[LightFarm] Stats webhook: ON")
+print("[LightFarm] Session Cube webhook: ON")
+print("[LightFarm] Auto-reinject: " .. tostring(queueTeleport ~= nil))
