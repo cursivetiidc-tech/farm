@@ -14,10 +14,10 @@ local CONFIG = {
     STATS_WEBHOOK = "https://discord.com/api/webhooks/1539491251219599472/N2PZNOW2qMJDuZo6yW2uDpT96vqnSTX8o2-C7W9LfiZ7ymQVcSRlfwiBHJqrcLr2QrF6",
 
     -- Replace with your ROTATED webhook #2 (new Session Cube)
-    CUBE_WEBHOOK = "https://discord.com/api/webhooks/1539685787358986312/TuFWgRmPVPCrVfiYDyLmI0XAe0EnKp64gO-GJ6qr8I0ARbxtdfiEx2KIJ78ZbF9ZQVFy",
+    CUBE_WEBHOOK = "https://discord.com/api/webhooks/1539685787358986312/TuFWgRmPVPCrVfiYDyLmI0XAe0EnKp64gO-GJ6qr8I0ARbxtdfiEx2KIJ78bF9ZQVFy",
 
     -- Raw GitHub/Gist URL for THIS script. Needed for auto-reinject.
-    SCRIPT_URL = "https://raw.githubusercontent.com/cursivetiidc-tech/farm/refs/heads/main/Light",
+    SCRIPT_URL = "PUT_RAW_SCRIPT_URL_HERE",
 
     PACK_DELAY = 0.10,
     DICE_BUY_DELAY = 1,
@@ -28,6 +28,8 @@ local CONFIG = {
 }
 
 if not game:IsLoaded() then game.Loaded:Wait() end
+
+print("[LightFarm] SCRIPT LOADED - starting...")
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -42,18 +44,22 @@ if not Remotes then
     return
 end
 
-local function request(url, payload)
+local executorRequest = http_request
+    or (syn and syn.request)
+    or (http and http.request)
+    or _G.request
+
+local function sendWebhookRequest(url, payload)
     if not url or url == "" or url:find("PUT_") then return end
 
-    local req = http_request or request or syn and syn.request or http and http.request
-    if not req then
+    if not executorRequest then
         warn("[LightFarm] HTTP request function unavailable.")
         return
     end
 
     task.spawn(function()
         pcall(function()
-            req({
+            executorRequest({
                 Url = url,
                 Method = "POST",
                 Headers = {["Content-Type"] = "application/json"},
@@ -64,7 +70,7 @@ local function request(url, payload)
 end
 
 local function webhook(url, title, description)
-    request(url, {
+    sendWebhookRequest(url, {
         username = "Light Farm",
         embeds = {{
             title = title,
