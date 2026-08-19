@@ -17,7 +17,7 @@ local CONFIG = {
     CUBE_WEBHOOK = "https://discord.com/api/webhooks/1539685787358986312/TuFWgRmPVPCrVfiYDyLmI0XAe0EnKp64gO-GJ6qr8I0ARbxtdfiEx2KIJ78ZbF9ZQVFy",
 
     -- Raw GitHub/Gist URL for THIS script. Needed for auto-reinject.
-    SCRIPT_URL = "",
+    SCRIPT_URL = "https://raw.githubusercontent.com/cursivetiidc-tech/farm/refs/heads/main/Light",
 
     PACK_DELAY = 0.10,
     DICE_BUY_DELAY = 1,
